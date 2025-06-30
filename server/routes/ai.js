@@ -21,7 +21,7 @@ router.post('/chat', authenticateToken, async (req, res) => {
     }
 
     // Get the generative model
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Create system prompt for interview preparation
     const systemPrompt = `You are an AI Interview Preparation Assistant for IIITA students. Your role is to help students prepare for technical interviews at top companies.
@@ -61,10 +61,16 @@ Keep responses practical and student-friendly. Always encourage practice and pre
     
     conversationContext += `Student: ${message}\nAssistant:`;
 
+    // Build contents array for Flash
+    const contents = [
+      { parts: [{ text: systemPrompt }] },
+      ...conversationHistory.slice(-6).map(msg => ({ parts: [{ text: `${msg.type === 'user' ? 'Student' : 'Assistant'}: ${msg.content}` }] })),
+      { parts: [{ text: `Student: ${message}` }] }
+    ];
+
     // Generate response
-    const result = await model.generateContent(conversationContext);
-    const response = await result.response;
-    const aiResponse = response.text();
+    const result = await model.generateContent({ contents });
+    const aiResponse = result.candidates?.[0]?.content?.trim() || '';
 
     // Log the interaction (optional, for monitoring)
     console.log(`AI Chat - User: ${req.user.id}, Message length: ${message.length}, Response length: ${aiResponse.length}`);
@@ -103,7 +109,7 @@ router.get('/company-tips/:company', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Gemini API key not configured' });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const prompt = `Provide concise interview preparation tips for ${company}. Include:
 1. Brief interview process (2-3 lines)
@@ -113,10 +119,11 @@ router.get('/company-tips/:company', authenticateToken, async (req, res) => {
 
 Keep response under 250 words and use bullet points.`;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const tips = response.text();
-
+    // Wrap prompt in contents array for Flash
+    const { candidates } = await model.generateContent({
+      contents: [{ parts: [{ text: prompt }] }]
+    });
+    const tips = candidates?.[0]?.content?.trim() || '';
     res.json({
       company,
       tips,
