@@ -20,7 +20,7 @@ const AIInterviewPrep: React.FC<AIInterviewPrepProps> = ({ isOpen, onClose }) =>
     {
       id: '1',
       type: 'ai',
-      content: `Hi! I'm your AI Interview Preparation Assistant powered by Google Gemini. 🤖
+      content: `Hi! I'm your AI Interview Preparation Assistant. 🤖
 
 I can help you prepare for interviews at specific companies by providing:
 • Company-specific interview insights
@@ -210,7 +210,7 @@ Try asking me again in a moment for AI-powered responses!`;
             </div>
             <div>
               <h2 className="text-xl font-bold">AI Interview Preparation</h2>
-              <p className="text-purple-100 text-sm">Powered by Google Gemini</p>
+              <p className="text-purple-100 text-sm">Smart LLM model</p>
             </div>
           </div>
           <button
@@ -355,7 +355,7 @@ Try asking me again in a moment for AI-powered responses!`;
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            Press Enter to send, Shift+Enter for new line • Powered by Google Gemini AI
+            Press Enter to send, Shift+Enter for new line
           </p>
         </div>
       </div>
