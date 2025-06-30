@@ -210,7 +210,7 @@ Try asking me again in a moment for AI-powered responses!`;
             </div>
             <div>
               <h2 className="text-xl font-bold">AI Interview Preparation</h2>
-              <p className="text-purple-100 text-sm">Smart LLM model</p>
+              <p className="text-purple-100 text-sm">Smart AI chatbot</p>
             </div>
           </div>
           <button
