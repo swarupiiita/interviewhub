@@ -61,15 +61,18 @@ Keep responses practical and student-friendly. Always encourage practice and pre
     
     conversationContext += `Student: ${message}\nAssistant:`;
 
-    // Build contents array for Flash
-    const contents = [
-      { parts: [{ text: systemPrompt }] },
-      ...conversationHistory.slice(-6).map(msg => ({ parts: [{ text: `${msg.type === 'user' ? 'Student' : 'Assistant'}: ${msg.content}` }] })),
-      { parts: [{ text: `Student: ${message}` }] }
+    // Build messages array with valid roles
+    const messagesForAI = [
+      { role: 'user', content: systemPrompt },
+      ...conversationHistory.slice(-6).map(msg => ({
+        role: 'user',
+        content: msg.content
+      })),
+      { role: 'user', content: message }
     ];
 
-    // Generate response
-    const result = await model.generateContent({ contents });
+    // Generate response using messages
+    const result = await model.generateContent({ messages: messagesForAI });
     const aiResponse = result.candidates?.[0]?.content?.trim() || '';
 
     // Log the interaction (optional, for monitoring)
