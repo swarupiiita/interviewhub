@@ -29,8 +29,8 @@ router.post('/chat', authenticateToken, async (req, res) => {
 
     console.log('🤖 Processing AI request with Gemini...');
 
-    // Get the generative model
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    // Get the generative model - using the correct model name
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     // Create system prompt for interview preparation
     const systemPrompt = `You are an AI Interview Preparation Assistant for IIITA students. Your role is to help students prepare for technical interviews at top companies.
@@ -143,7 +143,7 @@ router.get('/company-tips/:company', authenticateToken, async (req, res) => {
       return res.status(500).json({ error: 'Gemini API key not configured' });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
     const prompt = `Provide concise interview preparation tips for ${company}. Include:
 1. Brief interview process (2-3 lines)
@@ -179,6 +179,41 @@ Keep response under 250 words and use bullet points.`;
   } catch (error) {
     console.error('Company tips error:', error);
     res.status(500).json({ error: 'Failed to get company tips' });
+  }
+});
+
+// Add a test endpoint to check available models
+router.get('/test-models', authenticateToken, async (req, res) => {
+  try {
+    if (!genAI || !process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'Gemini API key not configured' });
+    }
+
+    // Test with a simple prompt
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const result = await model.generateContent({
+      contents: [{
+        role: 'user',
+        parts: [{ text: 'Hello, can you help with interview preparation?' }]
+      }]
+    });
+
+    const response = await result.response;
+    const text = response.text();
+
+    res.json({
+      success: true,
+      model: 'gemini-1.5-flash',
+      response: text,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Model test error:', error);
+    res.status(500).json({ 
+      error: 'Model test failed',
+      details: error.message
+    });
   }
 });
 
