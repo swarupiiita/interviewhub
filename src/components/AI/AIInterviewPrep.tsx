@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Send, Bot, User, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, Send, Bot, User, Sparkles, AlertCircle, RefreshCw, CheckCircle } from 'lucide-react';
 import api from '../../lib/api';
 
 interface Message {
@@ -8,6 +8,7 @@ interface Message {
   content: string;
   timestamp: Date;
   fallback?: boolean;
+  source?: string;
 }
 
 interface AIInterviewPrepProps {
@@ -37,6 +38,7 @@ Example: "Help me prepare for Google software engineer interview"`,
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'connected' | 'fallback'>('checking');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -47,7 +49,26 @@ Example: "Help me prepare for Google software engineer interview"`,
     scrollToBottom();
   }, [messages]);
 
-  const generateAIResponse = async (userMessage: string): Promise<string> => {
+  useEffect(() => {
+    // Check AI service status when component mounts
+    checkAIStatus();
+  }, []);
+
+  const checkAIStatus = async () => {
+    try {
+      const response = await api.get('/health');
+      if (response.data.geminiConfigured) {
+        setConnectionStatus('connected');
+      } else {
+        setConnectionStatus('fallback');
+      }
+    } catch (error) {
+      console.error('Failed to check AI status:', error);
+      setConnectionStatus('fallback');
+    }
+  };
+
+  const generateAIResponse = async (userMessage: string): Promise<{ response: string; fallback?: boolean; source?: string }> => {
     try {
       setError(null);
       
@@ -57,24 +78,37 @@ Example: "Help me prepare for Google software engineer interview"`,
         content: msg.content
       }));
 
+      console.log('Sending AI request...');
       const response = await api.post('/ai/chat', {
         message: userMessage,
         conversationHistory
       });
 
+      console.log('AI Response received:', response.data);
+
       if (response.data.fallback) {
+        setConnectionStatus('fallback');
         setError('Using fallback response - AI service temporarily unavailable');
+      } else if (response.data.source === 'gemini') {
+        setConnectionStatus('connected');
+        setError(null);
       }
 
-      return response.data.response;
+      return {
+        response: response.data.response,
+        fallback: response.data.fallback,
+        source: response.data.source
+      };
     } catch (error: any) {
       console.error('AI API Error:', error);
+      setConnectionStatus('fallback');
       
       // Enhanced fallback based on user message
       const lowerMessage = userMessage.toLowerCase();
       
       if (lowerMessage.includes('google')) {
-        return `🔍 **Google Interview Preparation**
+        return {
+          response: `🔍 **Google Interview Preparation**
 
 **Interview Process:**
 • Phone/Video screening (45 min)
@@ -87,14 +121,24 @@ Example: "Help me prepare for Google software engineer interview"`,
 3. **Merge k Sorted Lists** (Hard) - Divide and conquer
 
 **Key Tips:**
-• Practice LeetCode medium/hard problems
+• Practice LeetCode medium/hard problems daily
 • Study system design fundamentals
 • Prepare STAR format behavioral stories
-• Know Google's products and culture`;
+• Know Google's products and culture
+
+**Technical Focus:**
+• Data structures and algorithms
+• System design at scale
+• Code optimization
+• Problem-solving approach`,
+          fallback: true,
+          source: 'fallback'
+        };
       }
       
       if (lowerMessage.includes('microsoft')) {
-        return `💻 **Microsoft Interview Preparation**
+        return {
+          response: `💻 **Microsoft Interview Preparation**
 
 **Interview Process:**
 • Initial screening call
@@ -109,12 +153,17 @@ Example: "Help me prepare for Google software engineer interview"`,
 **Key Tips:**
 • Emphasize teamwork and growth mindset
 • Practice system design scenarios
-• Know Microsoft's cloud services (Azure)`;
+• Know Microsoft's cloud services (Azure)
+• Demonstrate leadership potential`,
+          fallback: true,
+          source: 'fallback'
+        };
       }
       
       // Generic fallback
       setError('AI service temporarily unavailable - using cached response');
-      return `I'm having trouble connecting to the AI service right now. Here are some general interview tips:
+      return {
+        response: `I'm having trouble connecting to the AI service right now. Here are some general interview tips:
 
 • **Practice Daily:** Solve coding problems on LeetCode/GeeksforGeeks
 • **Master Fundamentals:** Arrays, linked lists, trees, graphs, dynamic programming
@@ -122,7 +171,10 @@ Example: "Help me prepare for Google software engineer interview"`,
 • **Company Research:** Study the company's products, culture, and recent news
 • **Mock Interviews:** Practice explaining your thought process out loud
 
-Try asking me again in a moment for AI-powered responses!`;
+Try asking me again in a moment for AI-powered responses!`,
+        fallback: true,
+        source: 'fallback'
+      };
     }
   };
 
@@ -141,13 +193,15 @@ Try asking me again in a moment for AI-powered responses!`;
     setIsLoading(true);
 
     try {
-      const aiResponse = await generateAIResponse(userMessage.content);
+      const aiResponseData = await generateAIResponse(userMessage.content);
       
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'ai',
-        content: aiResponse,
+        content: aiResponseData.response,
         timestamp: new Date(),
+        fallback: aiResponseData.fallback,
+        source: aiResponseData.source
       };
 
       setMessages(prev => [...prev, aiMessage]);
@@ -158,6 +212,7 @@ Try asking me again in a moment for AI-powered responses!`;
         type: 'ai',
         content: 'Sorry, I encountered an error. Please try again!',
         timestamp: new Date(),
+        fallback: true
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
@@ -197,6 +252,30 @@ Try asking me again in a moment for AI-powered responses!`;
 
   const clearError = () => setError(null);
 
+  const getStatusColor = () => {
+    switch (connectionStatus) {
+      case 'connected': return 'text-green-600';
+      case 'fallback': return 'text-yellow-600';
+      default: return 'text-gray-600';
+    }
+  };
+
+  const getStatusIcon = () => {
+    switch (connectionStatus) {
+      case 'connected': return <CheckCircle className="w-4 h-4" />;
+      case 'fallback': return <AlertCircle className="w-4 h-4" />;
+      default: return <RefreshCw className="w-4 h-4 animate-spin" />;
+    }
+  };
+
+  const getStatusText = () => {
+    switch (connectionStatus) {
+      case 'connected': return 'AI Connected';
+      case 'fallback': return 'Fallback Mode';
+      default: return 'Checking...';
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -210,7 +289,10 @@ Try asking me again in a moment for AI-powered responses!`;
             </div>
             <div>
               <h2 className="text-xl font-bold">AI Interview Preparation</h2>
-              <p className="text-purple-100 text-sm">Smart AI chatbot</p>
+              <div className={`flex items-center space-x-1 text-sm ${getStatusColor()}`}>
+                {getStatusIcon()}
+                <span>{getStatusText()}</span>
+              </div>
             </div>
           </div>
           <button
@@ -280,6 +362,11 @@ Try asking me again in a moment for AI-powered responses!`;
                       {message.fallback && (
                         <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs">
                           Fallback
+                        </span>
+                      )}
+                      {message.source === 'gemini' && (
+                        <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                          AI
                         </span>
                       )}
                     </div>

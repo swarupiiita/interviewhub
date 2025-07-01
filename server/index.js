@@ -76,7 +76,8 @@ app.get('/health', (req, res) => {
     status: 'OK', 
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    geminiConfigured: !!process.env.GEMINI_API_KEY
+    geminiConfigured: !!process.env.GEMINI_API_KEY,
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
@@ -103,7 +104,8 @@ app.get('/', (req, res) => {
       analytics: '/api/analytics',
       ai: '/api/ai',
       health: '/health'
-    }
+    },
+    geminiStatus: process.env.GEMINI_API_KEY ? 'configured' : 'not configured'
   });
 });
 
@@ -151,8 +153,10 @@ const startServer = async () => {
     // Check Gemini API configuration
     if (!process.env.GEMINI_API_KEY) {
       console.warn('⚠️  GEMINI_API_KEY not configured - AI features will use fallback responses');
+      console.warn('⚠️  Please set GEMINI_API_KEY environment variable for AI functionality');
     } else {
       console.log('🤖 Gemini AI configured successfully');
+      console.log('🔑 API Key present:', process.env.GEMINI_API_KEY.substring(0, 10) + '...');
     }
     
     // Start server

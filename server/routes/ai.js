@@ -5,7 +5,13 @@ import { authenticateToken } from '../middleware/auth.js';
 const router = express.Router();
 
 // Initialize Gemini AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+let genAI = null;
+if (process.env.GEMINI_API_KEY) {
+  genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  console.log('✅ Gemini AI initialized successfully');
+} else {
+  console.warn('⚠️  GEMINI_API_KEY not found in environment variables');
+}
 
 // Chat with AI for interview preparation
 router.post('/chat', authenticateToken, async (req, res) => {
@@ -16,12 +22,15 @@ router.post('/chat', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: 'Gemini API key not configured' });
+    if (!genAI || !process.env.GEMINI_API_KEY) {
+      console.log('❌ Gemini API not available, using fallback');
+      return provideFallbackResponse(message, res);
     }
 
+    console.log('🤖 Processing AI request with Gemini...');
+
     // Get the generative model
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
     // Create system prompt for interview preparation
     const systemPrompt = `You are an AI Interview Preparation Assistant for IIITA students. Your role is to help students prepare for technical interviews at top companies.
@@ -50,53 +59,78 @@ COMPANIES TO FOCUS ON:
 
 Keep responses practical and student-friendly. Always encourage practice and preparation.`;
 
-    // Build conversation context
-    let conversationContext = systemPrompt + '\n\n';
+    // Build conversation context with proper structure
+    const contents = [];
     
+    // Add system prompt as first message
+    contents.push({
+      role: 'user',
+      parts: [{ text: systemPrompt }]
+    });
+    
+    contents.push({
+      role: 'model',
+      parts: [{ text: 'I understand. I\'m ready to help IIITA students with interview preparation. Please ask me about any company or interview topic!' }]
+    });
+
     // Add recent conversation history (last 6 messages to keep context manageable)
     const recentHistory = conversationHistory.slice(-6);
     for (const msg of recentHistory) {
-      conversationContext += `${msg.type === 'user' ? 'Student' : 'Assistant'}: ${msg.content}\n`;
+      contents.push({
+        role: msg.type === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }]
+      });
     }
     
-    conversationContext += `Student: ${message}\nAssistant:`;
+    // Add current user message
+    contents.push({
+      role: 'user',
+      parts: [{ text: message }]
+    });
 
-    // Build `contents` array for the Flash endpoint
-    const contents = [
-      { parts: [{ text: systemPrompt }] },
-      ...conversationHistory.slice(-6).map(msg => ({ parts: [{ text: msg.content }] })),
-      { parts: [{ text: message }] }
-    ];
+    console.log('📤 Sending request to Gemini with', contents.length, 'messages');
 
-    // Generate response using `contents`
-    const result = await model.generateContent({ contents });
-    const aiResponse = result.candidates?.[0]?.content?.trim() || '';
+    // Generate response using the correct API structure
+    const result = await model.generateContent({
+      contents: contents,
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 1024,
+      },
+    });
+
+    const response = await result.response;
+    const aiResponse = response.text();
+
+    if (!aiResponse || aiResponse.trim().length === 0) {
+      console.log('❌ Empty response from Gemini, using fallback');
+      return provideFallbackResponse(message, res);
+    }
+
+    console.log('✅ Successfully got response from Gemini');
 
     // Log the interaction (optional, for monitoring)
     console.log(`AI Chat - User: ${req.user.id}, Message length: ${message.length}, Response length: ${aiResponse.length}`);
 
     res.json({
       response: aiResponse,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      source: 'gemini'
     });
 
   } catch (error) {
-    console.error('Gemini AI Error:', error);
+    console.error('❌ Gemini AI Error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      status: error.status,
+      statusText: error.statusText,
+      code: error.code
+    });
     
     // Provide fallback response
-    let fallbackResponse = "I'm having trouble connecting right now. Here are some general interview tips:\n\n";
-    fallbackResponse += "• Practice coding problems daily on LeetCode/GeeksforGeeks\n";
-    fallbackResponse += "• Master data structures: arrays, linked lists, trees, graphs\n";
-    fallbackResponse += "• Prepare behavioral stories using the STAR method\n";
-    fallbackResponse += "• Research the company's products and culture\n";
-    fallbackResponse += "• Practice explaining your thought process out loud\n\n";
-    fallbackResponse += "Try asking me again in a moment!";
-
-    res.json({
-      response: fallbackResponse,
-      timestamp: new Date().toISOString(),
-      fallback: true
-    });
+    return provideFallbackResponse(req.body.message, res);
   }
 });
 
@@ -105,11 +139,11 @@ router.get('/company-tips/:company', authenticateToken, async (req, res) => {
   try {
     const { company } = req.params;
     
-    if (!process.env.GEMINI_API_KEY) {
+    if (!genAI || !process.env.GEMINI_API_KEY) {
       return res.status(500).json({ error: 'Gemini API key not configured' });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
 
     const prompt = `Provide concise interview preparation tips for ${company}. Include:
 1. Brief interview process (2-3 lines)
@@ -119,15 +153,27 @@ router.get('/company-tips/:company', authenticateToken, async (req, res) => {
 
 Keep response under 250 words and use bullet points.`;
 
-    // Wrap prompt in contents array for Flash
-    const { candidates } = await model.generateContent({
-      contents: [{ parts: [{ text: prompt }] }]
+    const result = await model.generateContent({
+      contents: [{ 
+        role: 'user',
+        parts: [{ text: prompt }] 
+      }],
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 512,
+      },
     });
-    const tips = candidates?.[0]?.content?.trim() || '';
+
+    const response = await result.response;
+    const tips = response.text();
+    
     res.json({
       company,
       tips,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      source: 'gemini'
     });
 
   } catch (error) {
@@ -135,5 +181,100 @@ Keep response under 250 words and use bullet points.`;
     res.status(500).json({ error: 'Failed to get company tips' });
   }
 });
+
+// Fallback response function
+function provideFallbackResponse(message, res) {
+  const lowerMessage = message.toLowerCase();
+  let fallbackResponse = "I'm having trouble connecting to the AI service right now. Here's some helpful information:\n\n";
+
+  if (lowerMessage.includes('google')) {
+    fallbackResponse = `🔍 **Google Interview Preparation**
+
+**Interview Process:**
+• Phone/Video screening (45 min)
+• 4-5 onsite rounds (technical + behavioral)
+• Focus on algorithms, system design, and Googleyness
+
+**Top 3 Coding Questions:**
+1. **Two Sum** (Easy) - Array manipulation and hash maps
+2. **Longest Substring Without Repeating Characters** (Medium) - Sliding window
+3. **Merge k Sorted Lists** (Hard) - Divide and conquer
+
+**Key Tips:**
+• Practice LeetCode medium/hard problems daily
+• Study system design fundamentals (scalability, load balancing)
+• Prepare STAR format behavioral stories
+• Know Google's products and engineering culture
+
+**Technical Focus:**
+• Data structures and algorithms
+• System design at scale
+• Code optimization
+• Problem-solving approach`;
+  } else if (lowerMessage.includes('microsoft')) {
+    fallbackResponse = `💻 **Microsoft Interview Preparation**
+
+**Interview Process:**
+• Initial screening call (30 min)
+• 4-5 technical rounds with different teams
+• Focus on problem-solving and collaboration
+
+**Top 3 Coding Questions:**
+1. **Reverse Linked List** (Easy) - Pointer manipulation
+2. **Binary Tree Level Order Traversal** (Medium) - BFS/Queue
+3. **Design LRU Cache** (Medium) - Hash map + doubly linked list
+
+**Key Tips:**
+• Emphasize teamwork and growth mindset
+• Practice system design scenarios
+• Know Microsoft's cloud services (Azure)
+• Demonstrate leadership potential
+
+**Technical Focus:**
+• Object-oriented programming
+• Cloud computing concepts
+• Collaborative problem solving
+• Code quality and testing`;
+  } else if (lowerMessage.includes('amazon')) {
+    fallbackResponse = `📦 **Amazon Interview Preparation**
+
+**Interview Process:**
+• Online assessment (coding + behavioral)
+• 5-6 rounds including bar raiser
+• Heavy focus on leadership principles
+
+**Top 3 Coding Questions:**
+1. **Valid Parentheses** (Easy) - Stack operations
+2. **Rotting Oranges** (Medium) - BFS/Graph traversal
+3. **Merge Intervals** (Medium) - Array manipulation
+
+**Key Tips:**
+• Master all 16 leadership principles with examples
+• Practice system design for high scale
+• Focus on customer obsession stories
+• Prepare for behavioral deep dives
+
+**Technical Focus:**
+• Scalability and performance
+• Distributed systems
+• Leadership principles
+• Customer-centric solutions`;
+  } else {
+    fallbackResponse += "• **Practice Daily:** Solve coding problems on LeetCode/GeeksforGeeks\n";
+    fallbackResponse += "• **Master Fundamentals:** Arrays, linked lists, trees, graphs, dynamic programming\n";
+    fallbackResponse += "• **Behavioral Prep:** Prepare STAR method stories for common questions\n";
+    fallbackResponse += "• **Company Research:** Study the company's products, culture, and recent news\n";
+    fallbackResponse += "• **Mock Interviews:** Practice explaining your thought process out loud\n";
+    fallbackResponse += "• **System Design:** Learn basics of scalability, databases, and APIs\n\n";
+    fallbackResponse += "Try asking me about specific companies like Google, Microsoft, or Amazon!";
+  }
+
+  res.json({
+    response: fallbackResponse,
+    timestamp: new Date().toISOString(),
+    fallback: true,
+    source: 'fallback'
+  });
+}
 
 export default router;
