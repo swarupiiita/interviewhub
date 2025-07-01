@@ -13,6 +13,19 @@ database connection string - postgresql://interviewhub_user:qvR9LcglfuZVYJLfu0uZ
 
 problems - 
 
-1. add a guest mode in the login , make guest mode name as = guest , password = 12345678 , gmail = guest@iiita.ac.in , so that , any user can login with the guest mode . if you found any user is not logged in , in any browser , then treat it as logged in with guest . i mean , no need to navigate to login page , automatically login in the browser with guest id
+1. it is always showing - Using fallback response - AI service temporarily unavailable ,  solve it so that , gemini can give correct response . when i run , it gave me correct reply - dublin .   
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyCHDDfhl-JQkDwfSuKxY6Hw9z_Cy67wU74" \
+  -H 'Content-Type: application/json' \
+  -X POST \
+  -d '{
+    "contents": [
+      {
+        "parts": [
+          {
+            "text": "capital of ireland is ?"
+          }
+        ]
+      }
+    ]
+  }'
 
-2. add a AI option in header , make the page , here we will use gemini API keys, it will mainly guide users to prepare for interviews of any specific companies ,it will give minimal , very small answer , and give 2-3 top coding questions most asked in that company .  use a chatgpt like interface for it , 
