@@ -14,7 +14,7 @@ database connection string - postgresql://interviewhub_user:qvR9LcglfuZVYJLfu0uZ
 problems - 
 
 1. it is always showing - Using fallback response - AI service temporarily unavailable ,  solve it so that , gemini can give correct response . when i run , it gave me correct reply - dublin .   
-curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyCHDDfhl-JQkDwfSuKxY6Hw9z_Cy67wU74" \
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=<real key here>" \
   -H 'Content-Type: application/json' \
   -X POST \
   -d '{
